@@ -1,0 +1,41 @@
+1,
+By using AES-GCM encryption with padding and IV usage:
+- Each stored password is encrypted by using AES-GCM with a unique IV to ensure ciphertexts will be different if the same password is stored multiple times, which will prevent length-based analysis
+- Storage format for password have format: "encodedIV.encodedEncryptedPassword". IV always have same length (12 bytes), and encoded by base64 only, which can prevent attacker from inferring password length by observing
+- Password are converted into bytes buffer before encryption, make it difficult to distinguish pattern from raw storage data
+- AES-GCM append fixed-length authentication tag to encrypted value, which obfuscate the length of the password when storing.
+- Result is encoded consistently by using `encodeBuffer()` function, making it difficult to extract information from ciphertext
+
+
+2,
+- User-specific key derived from password & salt: each keychain use a unique master key, derived from user's password and a random salt, which make the derived key will differ for different user. So if attackers swap encrypted credentials between account, the decryption key will not match
+- Encrypt password by using AES-GCM, which include authentication tag. It wil detect any malicious modification to ciphertext. If attacker swap data, the authentication tag verification will fail, and decryption will not return original plaintext
+- Each credential is associated with domain-specific hash, which ensure that credential from one domain can't be swapped. If attacker swap data between two record, domain-specific hashing will ensure that it will fail
+
+
+3,
+Yes, that assumption is necessary to effectively prevent rollback attacks. To prevent rollback attacks, the system must ensure that the latest state of data is always verifiable:
+- When loading the keychain, stored data can be hashed and compared with the trusted hash that attacker can not modify. Which ensure rollback attempts are detectable and preventing time-reversal attack.
+
+
+
+4,
+- Randomized MAC introduce randomness into the tag generation, so running the MAC multiple times on the same domain name would yield different outputs. Because of that, we can't directly look up domain name using MAC value
+- To be able to look up, we can using this approach: Store the plaintext domain, along with a randomized MAC. This ensure that even if the MAC change, we still can retrieve original domain name.
+- Performance penalty:
+     + loss of efficient lookup: we have to search over stored entries
+     + storage requirement increasing: we must store plaintext domain names
+
+
+
+5,
+To reduce the information leakage about the number of records in the password manager, we can use padding approach to obscure the exact number of stored records by store dummy records to pad the database by maintain number of record stored is 2^n, where n = [log_2(k)]. And we need to ensure that dummy record are treated the same as the real ones to prevent attacker from distinguish real and fake.
+
+
+
+
+6,
+To support multi-user for specific sites without compromising security, we can use encryption key for each site, combined with access control policies:
+- Store per-site encryption key instead of only one encryptionKey, preventing cross-site access issues
+- Add access control list for shared sites. Each site's encryption key is encrypted with each authorized user's public key
+- Secure key sharing mechanism: Do not allow user to access to any other credential of other site from other user when they are granted access to one site
